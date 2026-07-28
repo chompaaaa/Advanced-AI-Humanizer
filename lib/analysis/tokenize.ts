@@ -47,7 +47,24 @@ const ABBREVIATIONS = [
   "p.m",
 ];
 
-const SENTINEL = "";
+/**
+ * Stands in for a period while the splitter runs.
+ *
+ * Written as an escape, never as a literal control character: a raw one is
+ * invisible in diffs and code review, and any tool that strips control
+ * characters from source would silently turn it into an empty string, which
+ * makes the unmask step insert a period at every character position.
+ */
+const SENTINEL = "\u0001";
+
+/**
+ * Control characters in the input would survive the sentinel round-trip and
+ * come back out as stray periods, corrupting the text and inventing sentence
+ * boundaries. Tabs and newlines are structural, so they stay.
+ */
+export function stripControlCharacters(text: string): string {
+  return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+}
 
 /**
  * Replaces periods that are structurally part of a token (abbreviations,
@@ -98,7 +115,8 @@ function unmask(text: string): string {
  * Splits prose into sentences. Markdown headings, list markers and blank lines
  * act as hard boundaries so a bulleted list doesn't read as one long sentence.
  */
-export function splitSentences(text: string): string[] {
+export function splitSentences(input: string): string[] {
+  const text = stripControlCharacters(input);
   if (!text.trim()) return [];
 
   const blocks = text
@@ -129,8 +147,8 @@ export function splitSentences(text: string): string[] {
 }
 
 /** Paragraphs, split on blank lines. */
-export function splitParagraphs(text: string): string[] {
-  return text
+export function splitParagraphs(input: string): string[] {
+  return stripControlCharacters(input)
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
@@ -139,10 +157,24 @@ export function splitParagraphs(text: string): string[] {
 /**
  * Word tokens. Keeps internal apostrophes and hyphens so "don't" and
  * "well-known" survive as single words.
+ *
+ * Matches any Unicode letter, not just Latin. A Latin-only pattern reported
+ * zero words for Cyrillic, Greek, Arabic, Hebrew and CJK text, which made
+ * every downstream metric meaningless *and* let such text slip past the
+ * word-count cap on the API route entirely.
  */
+const WORD = /\p{L}[\p{L}\p{M}]*(?:['’\-][\p{L}\p{M}]+)*/gu;
+
 export function splitWords(text: string): string[] {
-  const matches = text.match(/[A-Za-zÀ-ɏ]+(?:['’\-][A-Za-zÀ-ɏ]+)*/g);
-  return matches ?? [];
+  return text.match(WORD) ?? [];
+}
+
+/** Letters written in the Latin script, over all letters. */
+export function latinRatio(text: string): number {
+  const letters = text.match(/\p{L}/gu)?.length ?? 0;
+  if (letters === 0) return 1;
+  const latin = text.match(/\p{Script=Latin}/gu)?.length ?? 0;
+  return latin / letters;
 }
 
 const VOWEL_GROUP = /[aeiouy]+/g;
@@ -196,7 +228,8 @@ export interface TokenizedText {
   characters: number;
 }
 
-export function tokenize(text: string): TokenizedText {
+export function tokenize(input: string): TokenizedText {
+  const text = stripControlCharacters(input);
   const sentences = splitSentences(text);
   const words = splitWords(text);
 

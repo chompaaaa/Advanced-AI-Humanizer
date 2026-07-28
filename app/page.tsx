@@ -128,6 +128,9 @@ export default function Page() {
     }
   }, [input, running, settings]);
 
+  /* Drop any in-flight rewrite if the page goes away mid-request. */
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   /* Cmd/Ctrl+Enter runs the rewrite from anywhere on the page. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -366,6 +369,12 @@ export default function Page() {
                   : `Reads ${meta.label.toLowerCase()} across nine structural and lexical measures.`}
               </p>
             </div>
+
+            {shown.languageNote && (
+              <p className="mx-4 mb-4 rounded-md border border-warn/40 bg-warn-soft px-3 py-2 text-xs leading-relaxed text-warn">
+                {shown.languageNote}
+              </p>
+            )}
 
             {result && (
               <div className="border-t border-line px-4 py-4">

@@ -156,5 +156,30 @@ export const IRREGULAR_PARTICIPLES = new Set([
   "understood", "woken", "worn", "won", "written",
 ]);
 
-export const CONTRACTIONS =
-  /\b(?:[a-z]+['’](?:s|t|re|ve|ll|d|m)|can['’]t|won['’]t|shan['’]t|ain['’]t)\b/gi;
+/**
+ * Real contractions only.
+ *
+ * A permissive `[a-z]+'(s|t|re|ve|ll|d|m)` pattern also matches every
+ * possessive, so "the company's board's expectations" counted as two
+ * contractions. That made formal corporate prose — which has none — look more
+ * conversational than genuinely chatty writing, inverting the signal on
+ * exactly the text this tool is pointed at.
+ *
+ * The `'s` and `'d` forms are ambiguous with possessives, so they are limited
+ * to pronouns and determiners, which never take a possessive apostrophe
+ * ("its", not "it's"). Everything else is unambiguous.
+ */
+export const CONTRACTIONS = new RegExp(
+  [
+    // n't: don't, isn't, can't, won't, shan't, ain't, couldn't, …
+    String.raw`\w+n['’]t\b`,
+    String.raw`\bi['’]m\b`,
+    String.raw`\b(?:you|we|they|who)['’]re\b`,
+    String.raw`\b(?:i|you|we|they|who|could|should|would|might|must)['’]ve\b`,
+    String.raw`\b(?:i|you|he|she|it|we|they|that|there|who|what)['’]ll\b`,
+    String.raw`\b(?:i|you|he|she|it|we|they|that|there|who)['’]d\b`,
+    String.raw`\b(?:it|he|she|that|there|here|what|who|where|when|how|let)['’]s\b`,
+    String.raw`\by['’]all\b`,
+  ].join("|"),
+  "gi",
+);

@@ -49,6 +49,17 @@ function phraseRegex(phrase: string): RegExp {
   return new RegExp(`${left}${body}${right}`, "gi");
 }
 
+/**
+ * Compiled once at module load rather than on every analysis. The analyzer
+ * runs on a debounce as the user types, and rebuilding ~100 regexes per
+ * keystroke is pure waste. Safe to share: `String.prototype.match` resets
+ * `lastIndex`, so a global regex carries no state between calls.
+ */
+const COMPILED_PHRASES = AI_PHRASES.map((entry) => ({
+  entry,
+  regex: phraseRegex(entry.phrase),
+}));
+
 /** Sentence-length variation. Human prose swings; model prose clusters. */
 function burstinessSignal(t: TokenizedText): Signal {
   const lengths = sentenceLengths(t.sentences);
@@ -124,8 +135,8 @@ function lexiconSignal(t: TokenizedText): Signal {
   const evidence: SignalEvidence[] = [];
   let weighted = 0;
 
-  for (const entry of AI_PHRASES) {
-    const matches = t.raw.match(phraseRegex(entry.phrase));
+  for (const { entry, regex } of COMPILED_PHRASES) {
+    const matches = t.raw.match(regex);
     if (!matches) continue;
     weighted += matches.length * entry.weight;
     evidence.push({
@@ -363,20 +374,21 @@ function passiveSignal(t: TokenizedText): Signal {
  * Lexical repetition of content words. Model output tends to re-use its own
  * key nouns at a very even rate instead of varying or pronominalizing them.
  */
-function repetitionSignal(t: TokenizedText): Signal {
-  const STOPWORDS = new Set([
-    "the", "a", "an", "and", "or", "but", "if", "of", "to", "in", "on", "for",
-    "with", "as", "by", "at", "from", "that", "this", "these", "those", "it",
-    "its", "is", "are", "was", "were", "be", "been", "being", "have", "has",
-    "had", "do", "does", "did", "will", "would", "can", "could", "should",
-    "may", "might", "must", "not", "no", "so", "than", "then", "there", "their",
-    "they", "them", "he", "she", "his", "her", "we", "our", "you", "your", "i",
-    "my", "me", "us", "who", "which", "what", "when", "where", "how", "why",
-    "all", "any", "each", "more", "most", "other", "some", "such", "only",
-    "own", "same", "too", "very", "just", "also", "into", "about", "over",
-    "up", "out", "one", "two", "because", "while", "through", "during",
-  ]);
+/** Hoisted to module scope: rebuilding this Set on every keystroke is waste. */
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "if", "of", "to", "in", "on", "for",
+  "with", "as", "by", "at", "from", "that", "this", "these", "those", "it",
+  "its", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+  "had", "do", "does", "did", "will", "would", "can", "could", "should",
+  "may", "might", "must", "not", "no", "so", "than", "then", "there", "their",
+  "they", "them", "he", "she", "his", "her", "we", "our", "you", "your", "i",
+  "my", "me", "us", "who", "which", "what", "when", "where", "how", "why",
+  "all", "any", "each", "more", "most", "other", "some", "such", "only",
+  "own", "same", "too", "very", "just", "also", "into", "about", "over",
+  "up", "out", "one", "two", "because", "while", "through", "during",
+]);
 
+function repetitionSignal(t: TokenizedText): Signal {
   const content = t.words
     .map((w) => w.toLowerCase())
     .filter((w) => w.length > 3 && !STOPWORDS.has(w));
