@@ -1,0 +1,13 @@
+[package]
+name = "humanize-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "wasm-bindgen wrapper around humanize-core."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+humanize-core = { path = "../humanize-core" }
+wasm-bindgen = "0.2"
