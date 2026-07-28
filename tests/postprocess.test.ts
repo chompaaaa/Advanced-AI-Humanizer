@@ -112,6 +112,22 @@ describe("postProcess — whitespace", () => {
   });
 });
 
+describe("postProcess — control characters", () => {
+  const NUL = String.fromCharCode(0);
+  const SOH = String.fromCharCode(1);
+
+  it("does not mistake a NUL in the source for its own split marker", () => {
+    const { text } = postProcess(`Keep${NUL}this together.`);
+    assert.equal(text, "Keepthis together.");
+    assert.ok(!/\.\s/.test(text.slice(0, 10)), "no invented sentence break");
+  });
+
+  it("strips other control characters without touching the words", () => {
+    const { text } = postProcess(`Alpha${SOH}beta gamma.`);
+    assert.equal(text, "Alphabeta gamma.");
+  });
+});
+
 describe("postProcess — safety", () => {
   it("is a no-op on already-clean prose", () => {
     const input = "The deploy failed twice. Nobody knew why.\n\nThen it worked.";

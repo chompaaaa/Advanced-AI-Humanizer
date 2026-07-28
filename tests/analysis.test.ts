@@ -60,6 +60,40 @@ describe("splitWords", () => {
   it("drops bare numbers and punctuation", () => {
     assert.deepEqual(splitWords("3 cats, 4 dogs!"), ["cats", "dogs"]);
   });
+
+  // A Latin-only pattern returned zero words for these, which zeroed every
+  // downstream metric and let such text slip past the API word-count cap.
+  it("counts words in non-Latin scripts", () => {
+    assert.equal(splitWords("это тест здесь сейчас").length, 4, "Cyrillic");
+    assert.equal(splitWords("αυτο ειναι ενα τεστ").length, 4, "Greek");
+    assert.equal(splitWords("هذا اختبار هنا").length, 3, "Arabic");
+    assert.equal(splitWords("זה מבחן כאן").length, 3, "Hebrew");
+  });
+
+  it("still counts accented Latin as words", () => {
+    assert.deepEqual(splitWords("café naïve Zoë"), ["café", "naïve", "Zoë"]);
+  });
+});
+
+describe("control characters", () => {
+  const SOH = String.fromCharCode(1);
+  const NUL = String.fromCharCode(0);
+
+  it("strips them instead of round-tripping them into stray periods", () => {
+    const sentences = splitSentences(`Before${SOH}middle after. Second sentence.`);
+    assert.equal(sentences.length, 2);
+    assert.equal(sentences[0], "Beforemiddle after.");
+    assert.ok(!sentences[0].includes("Before."), "no period invented mid-word");
+  });
+
+  it("does not let a NUL in the source create a sentence break", () => {
+    assert.equal(splitSentences(`Keep${NUL}this together.`).length, 1);
+  });
+
+  it("keeps tabs and newlines, which are structural", () => {
+    assert.equal(splitParagraphs("One.\n\nTwo.").length, 2);
+    assert.equal(splitWords("a\tb").length, 2);
+  });
 });
 
 describe("countSyllables", () => {
@@ -124,6 +158,70 @@ describe("computeReadability", () => {
     for (const value of Object.values(r)) {
       assert.ok(Number.isFinite(value));
     }
+  });
+
+  // The formulas are unbounded; a 600-word run-on sentence scored grade 230.
+  it("caps absurd grades at a reportable ceiling", () => {
+    const runOn = `${"word ".repeat(600)}end.`;
+    const r = computeReadability(tokenize(runOn));
+    assert.ok(r.fleschKincaidGrade <= 30, `got ${r.fleschKincaidGrade}`);
+    assert.ok(r.consensusGrade <= 30, `got ${r.consensusGrade}`);
+    assert.ok(r.gunningFog <= 30 && r.smog <= 30 && r.automatedReadability <= 30);
+  });
+});
+
+describe("contraction detection", () => {
+  const contractionScore = (text: string) =>
+    analyzeText(text).patterns.signals.find((s) => s.id === "contractions");
+
+  const POSSESSIVES = `The company's quarterly results exceeded the board's expectations across every reporting segment. Management's approach was validated by the market's response over the following weeks. The industry's leaders broadly agreed with the analyst's assessment of the situation. The firm's strategy reflected the sector's direction and the region's steady growth. The client's feedback matched the vendor's own internal review of the rollout.`;
+
+  const REAL = `The company didn't hit its numbers this quarter and nobody on the call pretended otherwise. We're not entirely sure why it went the way it did. They'd promised something better back in spring, and it's pretty clear now that wasn't ever going to happen. You can't plan a year around a forecast that soft. I've seen this before.`;
+
+  // A permissive pattern counted every possessive, so formal prose with zero
+  // contractions scored *more* conversational than genuinely chatty writing.
+  it("does not count possessive apostrophes as contractions", () => {
+    const signal = contractionScore(POSSESSIVES);
+    assert.match(signal?.detail ?? "", /^0 contractions/, signal?.detail);
+    assert.equal(signal?.score, 100, "no contractions should read as machine-like");
+  });
+
+  it("counts genuine contractions", () => {
+    const signal = contractionScore(REAL);
+    assert.ok((signal?.score ?? 100) < 20, `expected a low score, got ${signal?.score}`);
+  });
+
+  it("recognises each contraction family", () => {
+    for (const sample of ["don't", "isn't", "won't", "I'm", "we're", "they've", "it'll", "he'd", "it's", "let's"]) {
+      const padded = `${sample} ${"filler word here ".repeat(20)}`;
+      const signal = contractionScore(padded);
+      assert.match(signal?.detail ?? "", /^[1-9]/, `${sample} was not counted`);
+    }
+  });
+
+  it("does not count a possessive proper noun", () => {
+    const padded = `James's report and the team's notes. ${"filler word here ".repeat(20)}`;
+    assert.match(contractionScore(padded)?.detail ?? "", /^0 contractions/);
+  });
+});
+
+describe("language handling", () => {
+  it("flags mostly non-Latin text instead of reporting a confident grade", () => {
+    const ru = analyzeText("Это тест. Ещё один тест здесь. Третье предложение тоже тут.");
+    assert.ok(ru.languageNote, "expected a language note for Russian");
+    assert.ok(ru.wordCount > 0, "word count must still be accurate");
+  });
+
+  it("leaves English alone", () => {
+    const en = analyzeText("The deploy failed twice today. Nobody knew why it happened.");
+    assert.equal(en.languageNote, undefined);
+  });
+
+  it("leaves mostly-English text with some foreign words alone", () => {
+    const mixed = analyzeText(
+      "The report said это было хорошо and then moved on to other things entirely.",
+    );
+    assert.equal(mixed.languageNote, undefined);
   });
 });
 

@@ -29,6 +29,20 @@ function round(value: number, places = 1): number {
   return Math.round(value * f) / f;
 }
 
+/**
+ * Ceiling on reported grade level.
+ *
+ * The formulas are unbounded: a single 600-word run-on sentence yields a
+ * Flesch-Kincaid grade of 230, which is arithmetically correct and completely
+ * meaningless — the formulas were never calibrated up there. Capping keeps the
+ * UI readable while still reading as "far past graduate".
+ */
+const MAX_REPORTED_GRADE = 30;
+
+function grade(value: number): number {
+  return round(Math.min(MAX_REPORTED_GRADE, Math.max(0, value)));
+}
+
 export function computeReadability(t: TokenizedText): ReadabilityScores {
   const wordCount = t.words.length;
   const lengths = sentenceLengths(t.sentences);
@@ -64,16 +78,14 @@ export function computeReadability(t: TokenizedText): ReadabilityScores {
 
   const automatedReadability = 4.71 * charsPerWord + 0.5 * wordsPerSentence - 21.43;
 
-  const gradeFormulas = [fleschKincaidGrade, gunningFog, smog, automatedReadability].map((g) =>
-    Math.max(0, g),
-  );
+  const gradeFormulas = [fleschKincaidGrade, gunningFog, smog, automatedReadability].map(grade);
 
   return {
-    fleschKincaidGrade: round(Math.max(0, fleschKincaidGrade)),
+    fleschKincaidGrade: grade(fleschKincaidGrade),
     fleschReadingEase: round(Math.min(100, Math.max(0, fleschReadingEase))),
-    gunningFog: round(Math.max(0, gunningFog)),
-    smog: round(Math.max(0, smog)),
-    automatedReadability: round(Math.max(0, automatedReadability)),
+    gunningFog: grade(gunningFog),
+    smog: grade(smog),
+    automatedReadability: grade(automatedReadability),
     consensusGrade: round(mean(gradeFormulas)),
     avgSentenceLength: round(wordsPerSentence),
     avgSyllablesPerWord: round(syllablesPerWord, 2),
@@ -119,14 +131,14 @@ export function findGradeOutliers(
     for (const w of words) {
       syllables += countSyllables(w);
     }
-    const grade = 0.39 * words.length + 11.8 * (syllables / words.length) - 15.59;
+    const sentenceGrade = 0.39 * words.length + 11.8 * (syllables / words.length) - 15.59;
 
-    if (grade > targetGrade + 2.5) {
+    if (sentenceGrade > targetGrade + 2.5) {
       outliers.push({
         sentence,
         index,
         words: words.length,
-        grade: round(Math.max(0, grade)),
+        grade: grade(sentenceGrade),
       });
     }
   });

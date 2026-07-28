@@ -166,7 +166,11 @@ export async function humanize(
     );
 
     if (newDelta < priorDelta) {
-      processed = { text: corrected.text, changes: [...processed.changes, ...corrected.changes] };
+      processed = {
+        text: corrected.text,
+        // Both passes run the same cleanup, so the same line can appear twice.
+        changes: [...new Set([...processed.changes, ...corrected.changes])],
+      };
       after = correctedAnalysis;
     } else {
       correctionReason += " The corrected version scored no closer, so the first pass was kept.";

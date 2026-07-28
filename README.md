@@ -115,9 +115,15 @@ correction decision — without touching the network.
 
 ## Limits
 
-- 4,000 words per run. Split longer pieces into sections.
+- 4,000 words (or 120,000 characters) per run. Split longer pieces into sections.
 - Rewrites preserve facts, paragraph count and approximate length, but **check the output**.
   The metric grid flags word-count drift over 15% precisely because that usually means
   something got dropped.
+- **English only, for the metrics.** Word and sentence counts are correct for any script,
+  but every readability formula here counts English syllables and the phrase lexicon is
+  English. Text that is mostly outside the Latin alphabet gets an explicit warning in the
+  UI rather than a confident-looking grade that means nothing.
 - The syllable counter is heuristic. It's consistent, which is what the readability
   formulas need, but it isn't a pronunciation dictionary.
+- Signal thresholds are calibrated by hand against sample prose, not fit to a labelled
+  corpus. They separate the built-in samples cleanly, but they're judgement calls.

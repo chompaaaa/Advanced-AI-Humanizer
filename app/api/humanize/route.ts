@@ -6,6 +6,9 @@ export const runtime = "nodejs";
 /** Rewrites of long passages can take a while; give the route room. */
 export const maxDuration = 300;
 
+/** Generous ceiling well above the 4,000-word limit, to bound the payload. */
+const MAX_INPUT_CHARS = 120_000;
+
 function bad(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
@@ -21,6 +24,15 @@ export async function POST(request: Request) {
 
   if (typeof body.text !== "string" || !body.text.trim()) {
     return bad("Provide some text to rewrite.");
+  }
+
+  // Cheap length guard ahead of the word-count check, so an oversized payload
+  // is rejected before it reaches the analyzer. 4,000 words is well under this.
+  if (body.text.length > MAX_INPUT_CHARS) {
+    return bad(
+      `That's ${body.text.length.toLocaleString()} characters, over the ${MAX_INPUT_CHARS.toLocaleString()} limit. Split it into sections.`,
+      413,
+    );
   }
 
   const payload: HumanizeRequest = {
@@ -42,6 +54,17 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof HumanizeError) {
       return bad(error.message, error.status);
+    }
+
+    // A missing key throws at request time with no HTTP status attached, so it
+    // would otherwise fall through to a generic 500 and send the user to the
+    // logs for what is really a one-line setup problem.
+    const message = error instanceof Error ? error.message : "";
+    if (/could not resolve authentication|apiKey|authToken/i.test(message)) {
+      return bad(
+        "No Anthropic credentials found. Set ANTHROPIC_API_KEY in .env.local, or run `ant auth login`.",
+        401,
+      );
     }
 
     // Surface the SDK's own status codes rather than collapsing everything to 500.
